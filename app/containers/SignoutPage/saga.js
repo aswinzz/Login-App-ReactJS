@@ -1,0 +1,79 @@
+import { call, put, take, fork } from 'redux-saga/effects';
+import 'whatwg-fetch';
+
+import { SIGNOUT_SUCCESS_GLOBAL } from 'containers/App/constants';
+
+import {
+  SIGNOUT_REQUEST,
+  SIGNOUT_SUCCESS,
+  SIGNOUT_ERROR,
+  URL,
+} from './constants';
+
+
+function checkStatus(response) {
+  if (response.status >= 200 && response.status < 300) {
+    return response;
+  }
+
+  const error = new Error(response.statusText);
+  error.response = response;
+  throw error;
+}
+
+function parseJSON(response) {
+  if (response.status === 204 || response.status === 205) {
+    return null;
+  }
+  return response.json();
+}
+
+function* logout() {
+  while(true){
+    const request = yield take(SIGNOUT_REQUEST);
+    const { history } = request.data;
+
+    yield call(finishLogout,history);
+  }
+}
+
+function sendRequest() {
+  // console.log(username, password, 'test');
+  const token = localStorage.getItem('token');
+  return fetch(`${URL}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Token ${token}`,
+    },
+  }).then(checkStatus).then(parseJSON);
+}
+
+function* finishLogout(history){
+  try{
+    yield call(sendRequest);
+    const signoutSuccessResponse = yield put({type:SIGNOUT_SUCCESS});
+    if(signoutSuccessResponse){
+      localStorage.removeItem('token');
+      yield put({type: SIGNOUT_SUCCESS_GLOBAL});
+      yield call(forwardTo,history,'/home');
+    }
+  }
+  catch(e){
+    yield put({type:SIGNOUT_ERROR});
+  }
+}
+
+function forwardTo(history, location) {
+  history.push({
+    pathname: location,
+    state: {
+      message: 'Signout Success',
+    },
+  });
+}
+
+
+export default function* defaultSaga(){
+  yield fork(logout);
+}
